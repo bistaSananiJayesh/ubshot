@@ -1,0 +1,15 @@
+# UbShot Requirements
+# Phase 1 - Screenshot Capture
+
+# GUI Framework (Qt6 for Python)
+PySide6>=6.5.0
+
+# Global hotkeys for X11 (captures keyboard events system-wide)
+# Note: On Wayland, pynput may not work; will need different approach later
+pynput>=1.7.6
+
+# Image processing (Phase 3 - content-aware inpainting, blur)
+opencv-python-headless>=4.8.0
+
+# NumPy (required by OpenCV)
+numpy>=1.24.0
