@@ -1,12 +1,12 @@
 #!/bin/bash
-# UbShot Debian Package Build Script (Lightweight version)
-# Creates a .deb package that installs dependencies at runtime
+# UbShot Debian Package Build Script (FULLY BUNDLED)
+# Creates a .deb package with all dependencies included - works on any system
 
 set -e
 
 APP_NAME="ubshot"
-VERSION="1.0.0"
-ARCH="all"
+VERSION="1.1.0"
+ARCH="amd64"
 MAINTAINER="Jayesh Sangani <jayesh@example.com>"
 DESCRIPTION="UbShot - Screenshot & Annotation Tool for Linux"
 
@@ -14,7 +14,9 @@ DESCRIPTION="UbShot - Screenshot & Annotation Tool for Linux"
 BUILD_DIR="build/deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}_${ARCH}"
 
-echo "🚀 Building UbShot Debian Package v${VERSION} (lightweight)..."
+echo "🚀 Building UbShot Debian Package v${VERSION} (fully bundled)..."
+echo "   This creates a larger package but works on any system."
+echo ""
 
 # Clean previous builds
 rm -rf "${BUILD_DIR}"
@@ -27,25 +29,34 @@ mkdir -p "${PKG_DIR}/usr/bin"
 mkdir -p "${PKG_DIR}/usr/share/applications"
 mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
 
-# Copy application files (excluding venv and build artifacts)
+# Copy application files
 echo "📦 Copying application files..."
 cp -r src "${PKG_DIR}/opt/ubshot/"
 cp requirements.txt "${PKG_DIR}/opt/ubshot/"
 cp README.md "${PKG_DIR}/opt/ubshot/" 2>/dev/null || true
 
-# Create launcher script
+# Create and populate virtual environment
+echo "📥 Creating virtual environment with all dependencies..."
+echo "   (This may take a few minutes)"
+python3 -m venv "${PKG_DIR}/opt/ubshot/venv"
+source "${PKG_DIR}/opt/ubshot/venv/bin/activate"
+pip install --quiet --upgrade pip
+pip install --quiet -r requirements.txt
+deactivate
+
+# Make venv paths relative (important for portability)
+echo "🔧 Making virtual environment portable..."
+# Fix shebang paths in venv scripts to be relative
+find "${PKG_DIR}/opt/ubshot/venv/bin" -type f -exec sed -i "s|${PKG_DIR}||g" {} \; 2>/dev/null || true
+
+# Create launcher script (simple, no first-run setup needed)
 cat > "${PKG_DIR}/usr/bin/ubshot" << 'EOF'
 #!/bin/bash
+# UbShot Launcher
+
+export PATH="/opt/ubshot/venv/bin:$PATH"
 cd /opt/ubshot
-if [ ! -d "venv" ]; then
-    echo "First run: Setting up virtual environment..."
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install --quiet -r requirements.txt
-else
-    source venv/bin/activate
-fi
-python -m src.app "$@"
+/opt/ubshot/venv/bin/python3 -m src.app "$@"
 EOF
 chmod +x "${PKG_DIR}/usr/bin/ubshot"
 
@@ -69,29 +80,37 @@ if [ -f "src/resources/icons/app_icon.png" ]; then
     echo "✓ App icon copied"
 fi
 
-# Create DEBIAN control file
+# Calculate installed size in KB
+INSTALLED_SIZE=$(du -sk "${PKG_DIR}" | cut -f1)
+
+# Create DEBIAN control file (minimal dependencies)
 cat > "${PKG_DIR}/DEBIAN/control" << EOF
 Package: ${APP_NAME}
 Version: ${VERSION}
 Section: graphics
 Priority: optional
 Architecture: ${ARCH}
+Installed-Size: ${INSTALLED_SIZE}
 Maintainer: ${MAINTAINER}
-Depends: python3 (>= 3.10), python3-venv, python3-pip
+Depends: python3 (>= 3.10), libxcb-cursor0, libxcb-xinerama0
 Description: ${DESCRIPTION}
  A Shottr-like screenshot and annotation tool for Linux.
  Features: Area/fullscreen capture, annotations (shapes, arrows, text),
  blur/spotlight effects, auto-copy to clipboard, global hotkeys.
+ .
+ This package includes all dependencies - works out of the box!
 EOF
 
 # Create post-install script
 cat > "${PKG_DIR}/DEBIAN/postinst" << 'EOF'
 #!/bin/bash
 set -e
+echo ""
 echo "✅ UbShot installed successfully!"
-echo "   Setting up virtual environment on first run..."
 echo ""
 echo "   Run 'ubshot' or find it in your applications menu."
+echo "   Global hotkeys: Ctrl+Shift+A (area), Ctrl+Shift+S (fullscreen)"
+echo ""
 EOF
 chmod +x "${PKG_DIR}/DEBIAN/postinst"
 
@@ -101,12 +120,14 @@ cat > "${PKG_DIR}/DEBIAN/postrm" << 'EOF'
 set -e
 if [ "$1" = "purge" ]; then
     rm -rf /opt/ubshot
+    rm -rf "$HOME/.local/share/ubshot" 2>/dev/null || true
 fi
 EOF
 chmod +x "${PKG_DIR}/DEBIAN/postrm"
 
 # Build the package
-echo "🔨 Building .deb package..."
+echo ""
+echo "🔨 Building .deb package (this may take a moment for compression)..."
 dpkg-deb --build --root-owner-group "${PKG_DIR}"
 
 # Move to dist folder
@@ -117,8 +138,14 @@ mv "${PKG_DIR}.deb" "dist/${APP_NAME}_${VERSION}_${ARCH}.deb"
 PACKAGE_SIZE=$(du -h "dist/${APP_NAME}_${VERSION}_${ARCH}.deb" | cut -f1)
 
 echo ""
+echo "════════════════════════════════════════════════════════════════"
 echo "✅ Package built successfully!"
-echo "   📦 dist/${APP_NAME}_${VERSION}_${ARCH}.deb (${PACKAGE_SIZE})"
 echo ""
-echo "To install: sudo dpkg -i dist/${APP_NAME}_${VERSION}_${ARCH}.deb"
+echo "   📦 dist/${APP_NAME}_${VERSION}_${ARCH}.deb"
+echo "   📊 Size: ${PACKAGE_SIZE}"
+echo ""
+echo "   This package includes ALL dependencies - works on any Ubuntu!"
+echo ""
+echo "To install: sudo apt install ./dist/${APP_NAME}_${VERSION}_${ARCH}.deb"
 echo "To remove:  sudo apt remove ubshot"
+echo "════════════════════════════════════════════════════════════════"
